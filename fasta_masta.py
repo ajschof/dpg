@@ -7,6 +7,7 @@ from torch.utils.data import Dataset, DataLoader, random_split
 from tqdm import tqdm
 from torch.nn.utils.rnn import pad_sequence
 import os
+import multiprocessing
 
 # Import FASTA sequences
 def import_fasta_sequences(file_path):
@@ -67,7 +68,6 @@ def collate_fn(batch):
 def main():
     parser = argparse.ArgumentParser(description="Train a model on polypeptide sequences")
     parser.add_argument("--fasta_path", type=str, required=True, help="Path to the FASTA file containing the polypeptide sequences")
-    parser.add_argument("--save_path", type=str, default="trained_model.pth", help="Path to save the trained model")
     
     args = parser.parse_args()
     file_path = args.fasta_path
@@ -87,8 +87,12 @@ def main():
     train_loader = DataLoader(train_dataset, batch_size=128, shuffle=True, collate_fn=collate_fn)
     val_loader = DataLoader(val_dataset, batch_size=128, shuffle=True, collate_fn=collate_fn)
 
+    # Set the number of threads to the number of available CPU cores
+    num_cores = multiprocessing.cpu_count()
+    torch.set_num_threads(num_cores)
+    torch.set_num_interop_threads(num_cores)
 
-    device = torch.device("mps")
+    device = torch.device("cpu")
 
     input_size = len(aa_to_idx)
     hidden_size = 128
@@ -125,10 +129,6 @@ def train(model, train_loader, criterion, optimizer, device, aa_to_idx):
         optimizer.step()
 
         epoch_loss += loss.item()
-
-    model_save_path = args.save_path
-    torch.save(model.state_dict(), model_save_path)
-    print(f"Model saved to {model_save_path}")
     
     return epoch_loss / len(train_loader)
 
