@@ -163,4 +163,5 @@ def validate(model, val_loader, criterion, device, aa_to_idx):
         return epoch_loss / len(val_loader)
 
 if __name__ == "__main__":
+    os.system('cls||clear')
     main()
