@@ -9,7 +9,6 @@ from torch.nn.utils.rnn import pad_sequence
 import os
 import multiprocessing
 
-
 # Import FASTA sequences
 def import_fasta_sequences(file_path):
     sequences = []
@@ -18,7 +17,6 @@ def import_fasta_sequences(file_path):
             sequences.append(str(record.seq))
     return sequences
 
-
 # Preprocess the data
 def tokenize_sequences(sequences):
     amino_acids = sorted(set("".join(sequences)))
@@ -26,7 +24,6 @@ def tokenize_sequences(sequences):
     idx_to_aa = {idx: aa for aa, idx in aa_to_idx.items()}
     tokenized_sequences = [[aa_to_idx[aa] for aa in seq] for seq in sequences]
     return tokenized_sequences, aa_to_idx, idx_to_aa
-
 
 # Dataset
 class PolypeptideDataset(Dataset):
@@ -57,7 +54,6 @@ class SimpleRNN(nn.Module):
         output, hidden = self.rnn(x, hidden)
         output = self.fc(output)
         return output, hidden
-
 
 def collate_fn(batch):
     input_sequences, target_sequences = zip(*batch)
@@ -90,8 +86,8 @@ def main():
     train_dataset, val_dataset = random_split(dataset, [train_size, val_size])
 
     # Change the batch size to 128
-    train_loader = DataLoader(train_dataset, batch_size=128, pin_memory=True, shuffle=True, collate_fn=collate_fn, num_workers=8)
-    val_loader = DataLoader(val_dataset, batch_size=128, pin_memory=True, collate_fn=collate_fn, num_workers=8)
+    train_loader = DataLoader(train_dataset, batch_size=128, pin_memory=True, shuffle=True, collate_fn=collate_fn, num_workers=2)
+    val_loader = DataLoader(val_dataset, batch_size=128, pin_memory=True, shuffle=True, collate_fn=collate_fn, num_workers=2)
 
     # Set the number of threads to the number of available CPU cores
     num_cores = multiprocessing.cpu_count()
@@ -111,14 +107,12 @@ def main():
     optimizer = optim.Adam(model.parameters())
 
     # Train the model
-    num_epochs = 20
+    num_epochs = 15
     for epoch in range(num_epochs):
         train_loss = train(model, train_loader, criterion, optimizer, device, aa_to_idx)
-        val_loss = validate(model, val_loader, criterion, device, aa_to_idx)
-        print(f"Epoch {epoch+1}/{num_epochs}, Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}")
+        print(f"Epoch {epoch+1}/{num_epochs}, Loss: {train_loss:.4f}")
         
     torch.save(model.state_dict(), output_path)
-
 
 def train(model, train_loader, criterion, optimizer, device, aa_to_idx):
     model.train()
@@ -142,25 +136,6 @@ def train(model, train_loader, criterion, optimizer, device, aa_to_idx):
     
     return epoch_loss / len(train_loader)
 
-def validate(model, val_loader, criterion, device, aa_to_idx):
-    model.eval()
-    epoch_loss = 0
-
-    with torch.no_grad():
-        for input_sequence, target_sequence in val_loader:
-            input_sequence = input_sequence.to(device)
-            target_sequence = target_sequence.to(device)
-
-            # One-hot encoding
-            input_sequence = nn.functional.one_hot(input_sequence, num_classes=len(aa_to_idx)).float()
-
-            hidden = None
-            output, _ = model(input_sequence, hidden)
-            loss = criterion(output.reshape(-1, output.size(-1)), target_sequence.reshape(-1))
-
-            epoch_loss += loss.item()
-
-        return epoch_loss / len(val_loader)
-
 if __name__ == "__main__":
+    os.system('cls||clear')
     main()
