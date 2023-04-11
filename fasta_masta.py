@@ -68,9 +68,11 @@ def collate_fn(batch):
 def main():
     parser = argparse.ArgumentParser(description="Train a model on polypeptide sequences")
     parser.add_argument("--fasta_path", type=str, required=True, help="Path to the FASTA file containing the polypeptide sequences")
+    parser.add_argument("--output_path", type=str, required=True, help="Path to save the trained model")
     
     args = parser.parse_args()
     file_path = args.fasta_path
+    output_path = args.output_path
 
     sequences = import_fasta_sequences(file_path)
     tokenized_sequences, aa_to_idx, idx_to_aa = tokenize_sequences(sequences)
@@ -105,10 +107,12 @@ def main():
     optimizer = optim.Adam(model.parameters())
 
     # Train the model
-    num_epochs = 50
+    num_epochs = 15
     for epoch in range(num_epochs):
         train_loss = train(model, train_loader, criterion, optimizer, device, aa_to_idx)
         print(f"Epoch {epoch+1}/{num_epochs}, Loss: {train_loss:.4f}")
+        
+    torch.save(model.state_dict(), output_path)
 
 def train(model, train_loader, criterion, optimizer, device, aa_to_idx):
     model.train()
