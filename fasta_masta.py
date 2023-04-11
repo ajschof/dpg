@@ -84,8 +84,8 @@ def main():
     train_dataset, val_dataset = random_split(dataset, [train_size, val_size])
 
     # Change the batch size to 128
-    train_loader = DataLoader(train_dataset, batch_size=128, shuffle=True, collate_fn=collate_fn)
-    val_loader = DataLoader(val_dataset, batch_size=128, shuffle=True, collate_fn=collate_fn)
+    train_loader = DataLoader(train_dataset, batch_size=128, pin_memory=True, shuffle=True, collate_fn=collate_fn, num_workers=2)
+    val_loader = DataLoader(val_dataset, batch_size=128, pin_memory=True, shuffle=True, collate_fn=collate_fn, num_workers=2)
 
     # Set the number of threads to the number of available CPU cores
     num_cores = multiprocessing.cpu_count()
