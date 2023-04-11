@@ -17,19 +17,18 @@ def import_fasta_sequences(file_path):
     return sequences
 
 # Preprocess the data
-def tokenize_sequences(sequences, max_seq_len):
+def tokenize_sequences(sequences):
     amino_acids = sorted(set("".join(sequences)))
     aa_to_idx = {aa: idx for idx, aa in enumerate(amino_acids)}
     idx_to_aa = {idx: aa for aa, idx in aa_to_idx.items()}
-    tokenized_sequences = [[aa_to_idx[aa] for aa in seq[:max_seq_len]] + [0] * (max_seq_len - len(seq[:max_seq_len])) for seq in sequences]
+    tokenized_sequences = [[aa_to_idx[aa] for aa in seq] for seq in sequences]
     return tokenized_sequences, aa_to_idx, idx_to_aa
-
-
 
 # Dataset
 class PolypeptideDataset(Dataset):
-    def __init__(self, tokenized_sequences, num_amino_acids):
+    def __init__(self, tokenized_sequences, max_seq_len, num_amino_acids):
         self.tokenized_sequences = tokenized_sequences
+        self.max_seq_len = max_seq_len
         self.num_amino_acids = num_amino_acids
 
     def __len__(self):
@@ -37,10 +36,10 @@ class PolypeptideDataset(Dataset):
 
     def __getitem__(self, index):
         sequence = self.tokenized_sequences[index]
-        input_sequence = sequence[:-1]
-        target_sequence = sequence[1:]
+        input_sequence = torch.tensor(sequence[:-1], dtype=torch.long)
+        target_sequence = torch.tensor(sequence[1:], dtype=torch.long)
 
-        return torch.tensor(input_sequence), torch.tensor(target_sequence)
+        return input_sequence, target_sequence
 
 
 # Model
@@ -55,69 +54,39 @@ class SimpleRNN(nn.Module):
         output = self.fc(output)
         return output, hidden
 
-def collate_fn(batch, sequences):
-    for seq in sequences:
-        assert all(isinstance(aa_idx, int) for aa_idx in seq), "sequences must be lists of integers"
+def collate_fn(batch):
+    input_sequences, target_sequences = zip(*batch)
+    input_lengths = [len(seq) for seq in input_sequences]
+    target_lengths = [len(seq) for seq in target_sequences]
 
-    input_sequences = [torch.tensor([aa_idx for aa_idx in sequences[seq]], dtype=torch.long) for seq, _ in batch]
-    target_sequences = [torch.tensor(sequences[seq], dtype=torch.long) for _, seq in batch]
-    max_seq_len = max([seq_len for _, _, seq_len in batch])
-    input_sequences = pad_sequence(input_sequences, batch_first=True, padding_value=0, max_length=max_seq_len)
-    target_sequences = pad_sequence(target_sequences, batch_first=True, padding_value=0, max_length=max_seq_len)
-    seq_lens = torch.tensor([seq_len for _, _, seq_len in batch], dtype=torch.long)
-    return input_sequences, target_sequences, seq_lens
+    padded_input_sequences = pad_sequence(input_sequences, batch_first=True, padding_value=0)
+    padded_target_sequences = pad_sequence(target_sequences, batch_first=True, padding_value=0)
 
-
-def train(model, train_loader, criterion, optimizer, device, aa_to_idx, save_path):
-    model.train()
-    epoch_loss = 0
-
-    for input_sequence, target_sequence, seq_len in tqdm(train_loader, desc="Training", unit="batch", mininterval=0.1):
-        input_sequence = input_sequence.to(device)
-        target_sequence = target_sequence.to(device)
-        
-        # Convert input_sequence to tensor of indices
-        input_sequence = input_sequence.long().argmax(dim=2)
-        
-        # One-hot encoding
-        input_sequence = nn.functional.one_hot(input_sequence, num_classes=len(aa_to_idx)).float()
-
-        optimizer.zero_grad()
-        hidden = None
-        output, _ = model(input_sequence, hidden)
-        loss = criterion(output.reshape(-1, output.size(-1)), target_sequence.reshape(-1))
-        loss.backward()
-        optimizer.step()
-
-        epoch_loss += loss.item()
-
-    model_save_path = save_path
-    torch.save(model.state_dict(), model_save_path)
-    print(f"Model saved to {model_save_path}")
-    
-    return epoch_loss / len(train_loader)
-
-
+    return padded_input_sequences, padded_target_sequences
 
 def main():
     parser = argparse.ArgumentParser(description="Train a model on polypeptide sequences")
     parser.add_argument("--fasta_path", type=str, required=True, help="Path to the FASTA file containing the polypeptide sequences")
-    parser.add_argument("--max_seq_len", type=int, default=0, help="Maximum sequence length to use for padding (default: 0)")
     parser.add_argument("--save_path", type=str, default="trained_model.pth", help="Path to save the trained model")
     
     args = parser.parse_args()
+    file_path = args.fasta_path
 
-    sequences = import_fasta_sequences(args.fasta_path)
-    tokenized_sequences, aa_to_idx, idx_to_aa = tokenize_sequences(sequences, args.max_seq_len)
+    sequences = import_fasta_sequences(file_path)
+    tokenized_sequences, aa_to_idx, idx_to_aa = tokenize_sequences(sequences)
+
+    max_seq_len = max([len(seq) for seq in tokenized_sequences])
 
     num_amino_acids = len(aa_to_idx)
-    dataset = PolypeptideDataset(tokenized_sequences, num_amino_acids)
+    dataset = PolypeptideDataset(tokenized_sequences, max_seq_len, num_amino_acids)
     train_size = int(0.8 * len(dataset))
     val_size = len(dataset) - train_size
     train_dataset, val_dataset = random_split(dataset, [train_size, val_size])
 
-    train_loader = DataLoader(train_dataset, batch_size=128, shuffle=True, collate_fn=lambda x: collate_fn(x, sequences))
-    val_loader = DataLoader(val_dataset, batch_size=128, shuffle=True, collate_fn=lambda x: collate_fn(x, sequences))
+    # Change the batch size to 128
+    train_loader = DataLoader(train_dataset, batch_size=128, shuffle=True, collate_fn=collate_fn)
+    val_loader = DataLoader(val_dataset, batch_size=128, shuffle=True, collate_fn=collate_fn)
+
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -134,12 +103,34 @@ def main():
     # Train the model
     num_epochs = 50
     for epoch in range(num_epochs):
-        train_loss = train(model, train_loader, criterion, optimizer, device, aa_to_idx, args.save_path)
+        train_loss = train(model, train_loader, criterion, optimizer, device, aa_to_idx)
         print(f"Epoch {epoch+1}/{num_epochs}, Loss: {train_loss:.4f}")
+
+def train(model, train_loader, criterion, optimizer, device, aa_to_idx):
+    model.train()
+    epoch_loss = 0
+
+    for input_sequence, target_sequence in tqdm(train_loader, desc="Training", unit="batch", mininterval=0.1):
+        input_sequence = input_sequence.to(device)
+        target_sequence = target_sequence.to(device)
+        
+        # One-hot encoding
+        input_sequence = nn.functional.one_hot(input_sequence, num_classes=len(aa_to_idx)).float()
+
+        optimizer.zero_grad()
+        hidden = None
+        output, _ = model(input_sequence, hidden)
+        loss = criterion(output.reshape(-1, output.size(-1)), target_sequence.reshape(-1))
+        loss.backward()
+        optimizer.step()
+
+        epoch_loss += loss.item()
 
     model_save_path = args.save_path
     torch.save(model.state_dict(), model_save_path)
-    print(f"Final model saved to {model_save_path}")
+    print(f"Model saved to {model_save_path}")
+    
+    return epoch_loss / len(train_loader)
 
 if __name__ == "__main__":
     os.system('cls||clear')
