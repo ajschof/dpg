@@ -8,7 +8,12 @@ from tqdm import tqdm
 from torch.nn.utils.rnn import pad_sequence
 import os
 import multiprocessing
+import time
+import sys
+from itertools import cycle
+from colorama import Fore, Style, just_fix_windows_console
 
+just_fix_windows_console()
 
 # Import FASTA sequences
 def import_fasta_sequences(file_path):
@@ -73,12 +78,10 @@ def main():
     parser = argparse.ArgumentParser(description="Train a model on polypeptide sequences")
     parser.add_argument("--fasta_path", type=str, required=True, help="Path to the FASTA file containing the polypeptide sequences")
     parser.add_argument("--output_path", type=str, required=True, help="Path to save the trained model")
-    parser.add_argument("--num_workers", type=int, required=True, help="Set number of workers to use - default is 8")
     
     args = parser.parse_args()
     file_path = args.fasta_path
     output_path = args.output_path
-    num_workerz = args.num_workers
 
     sequences = import_fasta_sequences(file_path)
     tokenized_sequences, aa_to_idx, idx_to_aa = tokenize_sequences(sequences)
@@ -92,8 +95,8 @@ def main():
     train_dataset, val_dataset = random_split(dataset, [train_size, val_size])
 
     # Change the batch size to 128
-    train_loader = DataLoader(train_dataset, batch_size=128, pin_memory=True, shuffle=True, collate_fn=collate_fn, num_workers=num_workerz)
-    val_loader = DataLoader(val_dataset, batch_size=128, pin_memory=True, collate_fn=collate_fn, num_workers=num_workerz)
+    train_loader = DataLoader(train_dataset, batch_size=128, pin_memory=True, shuffle=True, collate_fn=collate_fn, num_workers=8)
+    val_loader = DataLoader(val_dataset, batch_size=128, pin_memory=True, collate_fn=collate_fn, num_workers=8)
 
     # Set the number of threads to the number of available CPU cores
     num_cores = multiprocessing.cpu_count()
@@ -121,15 +124,17 @@ def main():
         
     torch.save(model.state_dict(), output_path)
 
-
 def train(model, train_loader, criterion, optimizer, device, aa_to_idx):
     model.train()
     epoch_loss = 0
 
-    for input_sequence, target_sequence in tqdm(train_loader, desc="Training", unit="batch", mininterval=0.1):
+    num_batches = len(train_loader)
+    start_time = time.time()
+
+    for batch_idx, (input_sequence, target_sequence) in enumerate(train_loader):
         input_sequence = input_sequence.to(device)
         target_sequence = target_sequence.to(device)
-        
+
         # One-hot encoding
         input_sequence = nn.functional.one_hot(input_sequence, num_classes=len(aa_to_idx)).float()
 
@@ -141,15 +146,29 @@ def train(model, train_loader, criterion, optimizer, device, aa_to_idx):
         optimizer.step()
 
         epoch_loss += loss.item()
-    
+
+        # Calculate and display percentage and ETA
+        percentage_left = 100 * (batch_idx + 1) / num_batches
+        elapsed_time = time.time() - start_time
+        eta = elapsed_time / (batch_idx + 1) * (num_batches - (batch_idx + 1))
+        sys.stdout.write(f"\r{Fore.GREEN}{Style.BRIGHT}Training... {percentage_left:.2f}% left. ETA: {eta:.2f} seconds")
+        sys.stdout.flush()
+
+    sys.stdout.write(f"{Style.RESET_ALL}\n")
+    sys.stdout.flush()
+
     return epoch_loss / len(train_loader)
 
 def validate(model, val_loader, criterion, device, aa_to_idx):
     model.eval()
     epoch_loss = 0
 
+    num_batches = len(val_loader)
+    start_time = time.time()
+    spinner = cycle(['-', '/', '|', '\\'])
+
     with torch.no_grad():
-        for input_sequence, target_sequence in val_loader:
+        for batch_idx, (input_sequence, target_sequence) in enumerate(val_loader):
             input_sequence = input_sequence.to(device)
             target_sequence = target_sequence.to(device)
 
@@ -162,7 +181,17 @@ def validate(model, val_loader, criterion, device, aa_to_idx):
 
             epoch_loss += loss.item()
 
-        return epoch_loss / len(val_loader)
+            # Calculate and display spinner, percentage, and ETA
+            percentage_left = 100 * (batch_idx + 1) / num_batches
+            elapsed_time = time.time() - start_time
+            eta = elapsed_time / (batch_idx + 1) * (num_batches - (batch_idx + 1))
+            sys.stdout.write(f"\r{Fore.YELLOW}{Style.BRIGHT}Training... {percentage_left:.2f}% left. ETA: {eta:.2f} seconds")
+            sys.stdout.flush()
+
+    sys.stdout.write(f"{Style.RESET_ALL}\n")
+    sys.stdout.flush()
+
+    return epoch_loss / len(val_loader)
 
 if __name__ == "__main__":
     os.system('cls||clear')
