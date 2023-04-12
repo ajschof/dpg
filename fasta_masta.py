@@ -73,10 +73,12 @@ def main():
     parser = argparse.ArgumentParser(description="Train a model on polypeptide sequences")
     parser.add_argument("--fasta_path", type=str, required=True, help="Path to the FASTA file containing the polypeptide sequences")
     parser.add_argument("--output_path", type=str, required=True, help="Path to save the trained model")
+    parser.add_argument("--num_workers", type=int, required=True, help="Set number of workers to use - default is 8")
     
     args = parser.parse_args()
     file_path = args.fasta_path
     output_path = args.output_path
+    num_workerz = args.num_workers
 
     sequences = import_fasta_sequences(file_path)
     tokenized_sequences, aa_to_idx, idx_to_aa = tokenize_sequences(sequences)
@@ -90,8 +92,8 @@ def main():
     train_dataset, val_dataset = random_split(dataset, [train_size, val_size])
 
     # Change the batch size to 128
-    train_loader = DataLoader(train_dataset, batch_size=128, pin_memory=True, shuffle=True, collate_fn=collate_fn, num_workers=8)
-    val_loader = DataLoader(val_dataset, batch_size=128, pin_memory=True, collate_fn=collate_fn, num_workers=8)
+    train_loader = DataLoader(train_dataset, batch_size=128, pin_memory=True, shuffle=True, collate_fn=collate_fn, num_workers=num_workerz)
+    val_loader = DataLoader(val_dataset, batch_size=128, pin_memory=True, collate_fn=collate_fn, num_workers=num_workerz)
 
     # Set the number of threads to the number of available CPU cores
     num_cores = multiprocessing.cpu_count()
