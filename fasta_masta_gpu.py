@@ -137,7 +137,7 @@ def validate(model, val_loader, criterion, device, aa_to_idx):
 def calculate_accuracy(model, data_loader, device, aa_to_idx):
     model.eval()
     total_correct = 0
-    total_sequences = 0
+    total_predictions = 0
 
     with torch.no_grad():
         for input_sequence, target_sequence in data_loader:
@@ -155,11 +155,10 @@ def calculate_accuracy(model, data_loader, device, aa_to_idx):
             correct = (predicted_sequence == target_sequence).sum().item()
             total_correct += correct
 
-            # Calculate total number of amino acids
-            total_amino_acids = target_sequence.shape[0] * target_sequence.shape[1]
-            total_sequences += target_sequence.shape[0]
+            # Calculate total number of predictions
+            total_predictions += target_sequence.numel()
 
-    return total_correct / total_amino_acids
+    return total_correct / total_predictions
 
 def main():
     parser = argparse.ArgumentParser(description="Train a model on polypeptide sequences")
@@ -223,7 +222,7 @@ def main():
         val_loss = validate(model, val_loader, criterion, device, aa_to_idx)
         train_accuracy = calculate_accuracy(model, train_loader, device, aa_to_idx)
         val_accuracy = calculate_accuracy(model, val_loader, device, aa_to_idx)
-        print(f"Epoch {epoch+1}/{num_epochs}, Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}, Train Acc: {train_accuracy:.4f}, Val Acc: {val_accuracy:.4f}")
+        print(f" | Epoch {epoch+1}/{num_epochs}, Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}, Train Acc: {train_accuracy:.4f}, Val Acc: {val_accuracy:.4f}")
         
     torch.save(model.state_dict(), output_path)
 
