@@ -165,7 +165,6 @@ def validate(model, val_loader, criterion, device, aa_to_idx):
 
     num_batches = len(val_loader)
     start_time = time.time()
-    spinner = cycle(['-', '/', '|', '\\'])
 
     with torch.no_grad():
         for batch_idx, (input_sequence, target_sequence) in enumerate(val_loader):
