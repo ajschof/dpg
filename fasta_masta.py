@@ -11,6 +11,9 @@ import time
 import sys
 from itertools import cycle
 from colorama import Fore, Style, just_fix_windows_console
+import torch.multiprocessing
+
+torch.multiprocessing.set_sharing_strategy('file_system')
 
 just_fix_windows_console()
 
