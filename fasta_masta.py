@@ -4,7 +4,6 @@ import torch.nn as nn
 import torch.optim as optim
 from Bio import SeqIO
 from torch.utils.data import Dataset, DataLoader, random_split
-from tqdm import tqdm
 from torch.nn.utils.rnn import pad_sequence
 import os
 import multiprocessing
