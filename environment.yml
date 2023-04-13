@@ -9,8 +9,6 @@ dependencies:
   - anaconda=custom
   - anyio=3.5.0
   - appdirs=1.4.4
-  - appnope=0.1.2
-  - appscript=1.1.2
   - argon2-cffi=21.3.0
   - argon2-cffi-bindings=21.2.0
   - astroid=2.14.2
@@ -157,7 +155,6 @@ dependencies:
   - libedit=3.1.20221030
   - libev=4.33
   - libffi=3.4.2
-  - libgfortran=5.0.0
   - libgfortran5=11.3.0
   - libglib=2.74.1
   - libiconv=1.17
@@ -290,10 +287,8 @@ dependencies:
   - python-dateutil=2.8.2
   - python-fastjsonschema=2.16.2
   - python-snappy=0.6.1
-  - python.app=3
   - python_abi=3.10
   - pytoolconfig=1.2.5
-  - pytorch=2.1.0.dev20230412
   - pytz=2022.7
   - pyviz_comms=2.0.2
   - pywavelets=1.4.1
