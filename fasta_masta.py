@@ -124,6 +124,7 @@ def validate(model, val_loader, criterion, device, aa_to_idx):
 
             # One-hot encoding
             input_sequence = nn.functional.one_hot(input_sequence, num_classes=len(aa_to_idx)).float()
+            input_sequence.requires_grad = False
 
             hidden = None
             output, _ = model(input_sequence, hidden)
