@@ -24,19 +24,17 @@ torch.cuda.empty_cache()
 
 # Import FASTA sequences
 def import_fasta_sequences(file_path):
-    sequences = []
     with open(file_path, "r") as file:
         for record in SeqIO.parse(file, "fasta"):
-            sequences.append(str(record.seq))
-    return np.array(sequences)
+            yield str(record.seq)
 
 # Preprocessing data
 def tokenize_sequences(sequences):
     print("Tokenizing sequences...")
-    amino_acids = sorted(set("".join(sequences)))
+    amino_acids = sorted(set("".join(list(sequences))))
     aa_to_idx = {aa: idx for idx, aa in enumerate(amino_acids)}
     idx_to_aa = {idx: aa for aa, idx in aa_to_idx.items()}
-    tokenized_sequences = [np.array([aa_to_idx[aa] for aa in seq]) for seq in sequences]
+    tokenized_sequences = (np.array([aa_to_idx[aa] for aa in seq]) for seq in sequences)
     return tokenized_sequences, aa_to_idx, idx_to_aa
 
 # Dataset
@@ -183,7 +181,7 @@ def main():
     mps_enable = args.enable_mps
     num_e = args.epoch
 
-    sequences = import_fasta_sequences(file_path)
+    sequences = list(import_fasta_sequences(file_path))
     tokenized_sequences, aa_to_idx, idx_to_aa = tokenize_sequences(sequences)
 
     dataset = PolypeptideDataset(tokenized_sequences)
