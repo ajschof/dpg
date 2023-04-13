@@ -8,10 +8,8 @@ from Bio import SeqIO
 from torch.utils.data import Dataset, DataLoader, random_split
 from torch.nn.utils.rnn import pad_sequence
 import os
-import multiprocessing
 import time
 import sys
-from itertools import cycle
 from colorama import Fore, Style, just_fix_windows_console
 import torch.multiprocessing
 from torch.utils.checkpoint import checkpoint
@@ -34,6 +32,7 @@ def import_fasta_sequences(file_path):
 
 # Preprocessing data
 def tokenize_sequences(sequences):
+    print("Tokenizing sequences...")
     amino_acids = sorted(set("".join(sequences)))
     aa_to_idx = {aa: idx for idx, aa in enumerate(amino_acids)}
     idx_to_aa = {idx: aa for aa, idx in aa_to_idx.items()}
@@ -59,6 +58,7 @@ def collate_fn(batch):
     input_sequences, target_sequences = zip(*batch)
     padded_input_sequences = pad_sequence(input_sequences, batch_first=True, padding_value=0)
     padded_target_sequences = pad_sequence(target_sequences, batch_first=True, padding_value=0)
+
     return padded_input_sequences, padded_target_sequences
 
 
@@ -70,8 +70,14 @@ class SimpleRNN(nn.Module):
         self.fc = nn.Linear(hidden_size, output_size)
 
     def forward(self, x, hidden):
-        output, hidden = self.rnn(x, hidden)
-        output = self.fc(output)
+        def rnn_checkpoint(x, hidden):
+            return self.rnn(x, hidden)
+
+        def fc_checkpoint(output):
+            return self.fc(output)
+
+        output, hidden = checkpoint(rnn_checkpoint, x, hidden)
+        output = checkpoint(fc_checkpoint, output)
         return output, hidden
 
 def train(model, train_loader, criterion, optimizer, device, aa_to_idx):
@@ -87,6 +93,7 @@ def train(model, train_loader, criterion, optimizer, device, aa_to_idx):
 
         # One-hot encoding
         input_sequence = nn.functional.one_hot(input_sequence, num_classes=len(aa_to_idx)).float()
+        input_sequence.requires_grad = True
 
         optimizer.zero_grad()
         hidden = None
@@ -98,9 +105,7 @@ def train(model, train_loader, criterion, optimizer, device, aa_to_idx):
         epoch_loss += loss.item()
         # Calculate and display percentage and ETA
         percentage_left = 100 * (batch_idx + 1) / num_batches
-        elapsed_time = time.time() - start_time
-        eta = elapsed_time / (batch_idx + 1) * (num_batches - (batch_idx + 1))
-        sys.stdout.write(f"\r{Fore.GREEN}{Style.BRIGHT}Training... {percentage_left:.2f}% left. ETA: {eta:.2f} seconds{Style.RESET_ALL}")
+        sys.stdout.write(f"\r{Fore.GREEN}{Style.BRIGHT}Training... {percentage_left:.2f}{Style.RESET_ALL}")
         sys.stdout.flush()
 
     return epoch_loss / len(train_loader)
@@ -128,9 +133,7 @@ def validate(model, val_loader, criterion, device, aa_to_idx):
 
             # Calculate and display spinner, percentage, and ETA
             percentage_left = 100 * (batch_idx + 1) / num_batches
-            elapsed_time = time.time() - start_time
-            eta = elapsed_time / (batch_idx + 1) * (num_batches - (batch_idx + 1))
-            sys.stdout.write(f"\r{Fore.YELLOW}{Style.BRIGHT}Validating... {percentage_left:.2f}% left. ETA: {eta:.2f} seconds{Style.RESET_ALL}")
+            sys.stdout.write(f"\r{Fore.YELLOW}{Style.BRIGHT}Validating... {percentage_left:.2f}{Style.RESET_ALL}")
             sys.stdout.flush()
 
     return epoch_loss / len(val_loader)
@@ -161,38 +164,35 @@ def calculate_accuracy(model, data_loader, device, aa_to_idx):
 
     return total_correct / total_predictions
 
+def save_checkpoint(state, filepath):
+    torch.save(state, filepath)
+
 def main():
     parser = argparse.ArgumentParser(description="Train a model on polypeptide sequences")
     parser.add_argument("--fasta_path", type=str, required=True, help="Path to the FASTA file containing the polypeptide sequences")
     parser.add_argument("--output_path", type=str, required=True, help="Path to save the trained model")
     parser.add_argument("--num_workers", type=int, required=True, help="Set number of workers to use - default is 8")
     parser.add_argument("--enable_mps", type=int, required=True, help="Use metal performance shaders (MPS) - 0 is off & 1 is on")
-    
+    parser.add_argument("--epoch", type=int, required=True, help="How many epochs to do?")
+
     args = parser.parse_args()
     file_path = args.fasta_path
     output_path = args.output_path
     num_workerz = args.num_workers
     mps_enable = args.enable_mps
+    num_e = args.epoch
 
     sequences = import_fasta_sequences(file_path)
     tokenized_sequences, aa_to_idx, idx_to_aa = tokenize_sequences(sequences)
 
-    max_seq_len = max([len(seq) for seq in tokenized_sequences])
-
-    num_amino_acids = len(aa_to_idx)
     dataset = PolypeptideDataset(tokenized_sequences)
     train_size = int(0.8 * len(dataset))
     val_size = len(dataset) - train_size
     train_dataset, val_dataset = random_split(dataset, [train_size, val_size])
 
     # Ran out of CUDA memory, so batch size will be reduced from 128 to 64 for now...
-    train_loader = DataLoader(train_dataset, batch_size=256, pin_memory=True, shuffle=True, collate_fn=collate_fn, num_workers=num_workerz)
-    val_loader = DataLoader(val_dataset, batch_size=128, pin_memory=True, collate_fn=collate_fn, num_workers=num_workerz)
-
-    # Set the number of threads to the number of available CPU cores
-    # num_cores = multiprocessing.cpu_count()
-    # torch.set_num_threads(num_cores)
-    # torch.set_num_interop_threads(num_cores)
+    train_loader = DataLoader(train_dataset, batch_size=32, pin_memory=True, shuffle=True, collate_fn=collate_fn, num_workers=num_workerz)
+    val_loader = DataLoader(val_dataset, batch_size=64, pin_memory=True, collate_fn=collate_fn, num_workers=num_workerz)
 
     if torch.cuda.is_available():
         device = torch.device("cuda")
@@ -219,17 +219,33 @@ def main():
 
     # Train the model
 
-    num_epochs = 20
+    num_epochs = num_e
+
     for epoch in range(num_epochs):
         train_loss = train(model, train_loader, criterion, optimizer, device, aa_to_idx)
         val_loss = validate(model, val_loader, criterion, device, aa_to_idx)
         train_accuracy = calculate_accuracy(model, train_loader, device, aa_to_idx)
         val_accuracy = calculate_accuracy(model, val_loader, device, aa_to_idx)
         print(f" | Epoch {epoch+1}/{num_epochs}, Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}, Train Acc: {train_accuracy:.4f}, Val Acc: {val_accuracy:.4f}")
+        
+        # Save a checkpoint after each epoch
+        checkpoint_path = f"{output_path}_epoch{epoch+1}.pth"
+        checkpoint_state = {
+            'epoch': epoch + 1,
+            'model_state_dict': model.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(),
+            'train_loss': train_loss,
+            'val_loss': val_loss,
+            'train_accuracy': train_accuracy,
+            'val_accuracy': val_accuracy
+        }
+        save_checkpoint(checkpoint_state, checkpoint_path)
+
         gc.collect()
         torch.cuda.empty_cache()
         
     torch.save(model.state_dict(), output_path)
+
 
 if __name__ == "__main__":
     os.system('cls||clear')
