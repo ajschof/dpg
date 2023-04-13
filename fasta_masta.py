@@ -173,7 +173,7 @@ def main():
     parser.add_argument("--fasta_path", type=str, required=True, help="Path to the FASTA file containing the polypeptide sequences")
     parser.add_argument("--output_path", type=str, required=True, help="Path to save the trained model")
     parser.add_argument("--num_workers", type=int, required=True, help="Set number of workers to use - default is 8")
-    parser.add_argument("--enable_mps", type=int, required=True, help="Use metal performance shaders (MPS) - 0 is off & 1 is on")
+    parser.add_argument("--enable_mps", type=int, required=False, help="Use metal performance shaders (MPS) - 0 is off & 1 is on")
     parser.add_argument("--epoch", type=int, required=True, help="How many epochs to do?")
 
     args = parser.parse_args()
