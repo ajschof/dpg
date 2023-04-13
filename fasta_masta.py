@@ -31,10 +31,10 @@ def import_fasta_sequences(file_path):
 # Preprocessing data
 def tokenize_sequences(sequences):
     print("Tokenizing sequences...")
-    amino_acids = sorted(set("".join(list(sequences))))
+    amino_acids = sorted(set("".join(sequences)))
     aa_to_idx = {aa: idx for idx, aa in enumerate(amino_acids)}
     idx_to_aa = {idx: aa for aa, idx in aa_to_idx.items()}
-    tokenized_sequences = (np.array([aa_to_idx[aa] for aa in seq]) for seq in sequences)
+    tokenized_sequences = [np.array([aa_to_idx[aa] for aa in seq]) for seq in sequences]
     return tokenized_sequences, aa_to_idx, idx_to_aa
 
 # Dataset
